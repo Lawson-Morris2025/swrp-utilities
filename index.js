@@ -30,7 +30,7 @@ async function verifyDiscordUser(guildMember) {
 
         const robloxId = bloxlinkRes.data?.robloxID;
         if (!robloxId) {
-            return { success: false, message: 'No Roblox account linked to this Discord account on Bloxlink.' };
+            return { success: false, message: 'You do not have a Roblox account linked to Bloxlink. Please verify at https://blox.link first.' };
         }
 
         const robloxRes = await axios.get(`https://users.roblox.com/v1/users/${robloxId}`);
@@ -66,7 +66,7 @@ const commands = [
 
     new SlashCommandBuilder()
         .setName('setverify')
-        .setDescription('Deploys the Bloxlink Roblox verification panel')
+        .setDescription('Deploys the Roblox verification panel')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
     new SlashCommandBuilder()
@@ -79,6 +79,8 @@ async function registerCommands() {
     try {
         const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
         console.log('Registering Slash Commands...');
+        
+        // Registers commands specifically to your server for instant deployment
         await rest.put(
             Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.DISCORD_GUILD_ID),
             { body: commands.map(c => c.toJSON()) }
@@ -197,15 +199,14 @@ client.on('interactionCreate', async (interaction) => {
 
         if (commandName === 'setverify') {
             const embed = new EmbedBuilder()
-                .setTitle('🏴󠁧󠁢󠁷󠁬󠁳󠁿 South Wales RP | Roblox Account Verification')
-                .setDescription('Welcome to **South Wales Roleplay**!\n\nTo access server channels, please verify your account. Clicking the button below will sync your server nickname with your **Roblox Username** and remove your Unverified role using Bloxlink.')
-                .setColor('#0052B4')
-                .setFooter({ text: 'South Wales RP • Bloxlink Powered Verification' });
+                .setTitle('🏴󠁧󠁢󠁷󠁬󠁳󠁿 South Wales RP | Verification')
+                .setDescription('Please press **Verify** to verify with Roblox to get started.')
+                .setColor('#0052B4');
 
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
                     .setCustomId('btn_verify_roblox')
-                    .setLabel('Verify with Roblox')
+                    .setLabel('Verify')
                     .setStyle(ButtonStyle.Success)
                     .setEmoji('🛡️')
             );
@@ -217,7 +218,7 @@ client.on('interactionCreate', async (interaction) => {
         if (commandName === 'setsupport') {
             const embed = new EmbedBuilder()
                 .setTitle('🎫 South Wales RP | Support Portal')
-                .setDescription('Welcome to the **South Wales Roleplay Support Panel**!\n\nSelect a category from the dropdown menu below to open a ticket with our team. Please refrain from opening troll tickets or pinging staff within 8 hours of creation.')
+                .setDescription('Welcome to the **South Wales Roleplay Support Panel**!\n\nSelect a category from the dropdown menu below to open a ticket with our team.')
                 .setColor('#0052B4')
                 .setFooter({ text: 'South Wales RP • Support System' });
 
