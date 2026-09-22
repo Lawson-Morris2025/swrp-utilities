@@ -58,7 +58,6 @@ async function verifyDiscordUser(guildMember) {
 // ==========================================
 async function closeTicketAndSendTranscript(channel, guild, closingUser, reason = 'No reason provided') {
     try {
-        // Fetch last 100 messages for the transcript
         const messages = await channel.messages.fetch({ limit: 100 });
         const sortedMessages = Array.from(messages.values()).reverse();
 
@@ -93,7 +92,7 @@ async function closeTicketAndSendTranscript(channel, guild, closingUser, reason 
             )
             .setTimestamp();
 
-        // 1. Send transcript to Ticket Owner (extracted from channel topic)
+        // Send transcript to Ticket Owner
         const ownerId = channel.topic?.split('Ticket Owner: ')[1]?.split(' ')[0];
         if (ownerId) {
             try {
@@ -104,7 +103,7 @@ async function closeTicketAndSendTranscript(channel, guild, closingUser, reason 
             }
         }
 
-        // 2. Send transcript to Server Owner
+        // Send transcript to Server Owner
         try {
             const serverOwner = await guild.fetchOwner();
             if (serverOwner.id !== ownerId) {
@@ -114,7 +113,7 @@ async function closeTicketAndSendTranscript(channel, guild, closingUser, reason 
             console.warn(`Could not DM transcript to server owner.`);
         }
 
-        // 3. Send transcript to the Staff Member closing it (if distinct)
+        // Send transcript to the Staff Member closing it
         if (closingUser.id !== ownerId && closingUser.id !== guild.ownerId) {
             try {
                 await closingUser.send({ embeds: [embed], files: [attachment] });
@@ -123,7 +122,6 @@ async function closeTicketAndSendTranscript(channel, guild, closingUser, reason 
             }
         }
 
-        // Delete channel after transcript dispatch
         setTimeout(() => channel.delete().catch(() => {}), 3000);
     } catch (error) {
         console.error('Error generating transcript:', error);
@@ -156,7 +154,51 @@ const commands = [
     new SlashCommandBuilder()
         .setName('setsupport')
         .setDescription('Deploys the South Wales RP support panel')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
+    new SlashCommandBuilder()
+        .setName('dm')
+        .setDescription('Sends a private direct message to a user')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+        .addUserOption(option => 
+            option.setName('target')
+                .setDescription('The member to direct message')
+                .setRequired(true))
+        .addStringOption(option => 
+            option.setName('message')
+                .setDescription('The content of the direct message')
+                .setRequired(true))
+        .addBooleanOption(option => 
+            option.setName('as_embed')
+                .setDescription('Send as an official embed? (Default: True)')
+                .setRequired(false)),
+
+    new SlashCommandBuilder()
+        .setName('announce')
+        .setDescription('Sends an official announcement to a specified channel')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+        .addChannelOption(option =>
+            option.setName('channel')
+                .setDescription('The channel to send the announcement in')
+                .addChannelTypes(ChannelType.GuildText)
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('title')
+                .setDescription('Announcement Title')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('message')
+                .setDescription('Announcement Message / Details')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('ping')
+                .setDescription('Optional ping for the announcement')
+                .setRequired(false)
+                .addChoices(
+                    { name: '@everyone', value: 'everyone' },
+                    { name: '@here', value: 'here' },
+                    { name: 'None', value: 'none' }
+                ))
 ];
 
 async function registerCommands() {
@@ -310,15 +352,75 @@ client.on('interactionCreate', async (interaction) => {
                 .setCustomId('select_support_category')
                 .setPlaceholder('Choose a support category...')
                 .addOptions([
-                    { label: 'Management', description: 'High-level support or management assistance.', value: 'ticket_management', emoji: '👑' },
-                    { label: 'Internal Affairs', description: 'Staff reports, complaints, or appeals.', value: 'ticket_ia', emoji: '⚖️' },
-                    { label: 'General Support', description: 'General questions and community help.', value: 'ticket_general', emoji: '💬' }
+                    { label: 'General', description: 'General questions and community support.', value: 'ticket_general', emoji: '💬' },
+                    { label: 'Report a Player', description: 'Report a player breaking server or roleplay rules.', value: 'ticket_report', emoji: '🚨' },
+                    { label: 'Management', description: 'High-level support, appeals, or management assistance.', value: 'ticket_management', emoji: '👑' }
                 ]);
 
             const row = new ActionRowBuilder().addComponents(selectMenu);
 
             await interaction.channel.send({ embeds: [embed], components: [row] });
             return interaction.reply({ content: '✅ Support ticket panel posted!', ephemeral: true });
+        }
+
+        if (commandName === 'dm') {
+            await interaction.deferReply({ ephemeral: true });
+
+            const targetUser = interaction.options.getUser('target');
+            const messageText = interaction.options.getString('message');
+            const sendAsEmbed = interaction.options.getBoolean('as_embed') ?? true;
+
+            try {
+                if (sendAsEmbed) {
+                    const dmEmbed = new EmbedBuilder()
+                        .setTitle(`📩 Message from ${interaction.guild.name}`)
+                        .setDescription(messageText)
+                        .setColor('#0052B4')
+                        .setFooter({ text: `Sent by Staff: ${interaction.user.tag}` })
+                        .setTimestamp();
+
+                    await targetUser.send({ embeds: [dmEmbed] });
+                } else {
+                    await targetUser.send(`**Message from ${interaction.guild.name}:**\n${messageText}`);
+                }
+
+                return interaction.editReply(`✅ Successfully sent PM to <@${targetUser.id}>.`);
+            } catch (err) {
+                console.error('Failed to send DM:', err);
+                return interaction.editReply(`❌ **Failed to send PM.** <@${targetUser.id}> may have DMs disabled or blocked the bot.`);
+            }
+        }
+
+        if (commandName === 'announce') {
+            await interaction.deferReply({ ephemeral: true });
+
+            const targetChannel = interaction.options.getChannel('channel');
+            const title = interaction.options.getString('title');
+            const messageText = interaction.options.getString('message');
+            const pingOption = interaction.options.getString('ping') || 'none';
+
+            const announceEmbed = new EmbedBuilder()
+                .setTitle(`📢 ${title}`)
+                .setDescription(messageText)
+                .setColor('#0052B4')
+                .setFooter({ text: 'South Wales RP • Official Announcement' })
+                .setTimestamp();
+
+            let pingText = '';
+            if (pingOption === 'everyone') pingText = '@everyone';
+            if (pingOption === 'here') pingText = '@here';
+
+            try {
+                await targetChannel.send({
+                    content: pingText || undefined,
+                    embeds: [announceEmbed]
+                });
+
+                return interaction.editReply(`✅ Announcement successfully posted in <#${targetChannel.id}>!`);
+            } catch (err) {
+                console.error('Failed to post announcement:', err);
+                return interaction.editReply(`❌ **Failed to post announcement.** Check bot permissions in <#${targetChannel.id}>.`);
+            }
         }
     }
 
@@ -415,9 +517,9 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.deferReply({ ephemeral: true });
 
             const categoryMap = {
-                'ticket_management': 'Management',
-                'ticket_ia': 'Internal Affairs',
-                'ticket_general': 'General Support'
+                'ticket_general': 'General',
+                'ticket_report': 'Report a Player',
+                'ticket_management': 'Management'
             };
 
             const ticketType = categoryMap[interaction.values[0]] || 'Support';
