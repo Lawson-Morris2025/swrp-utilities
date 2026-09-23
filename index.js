@@ -20,6 +20,9 @@ const {
 const axios = require('axios');
 const http = require('http');
 
+// Target Announcement Channels
+const ANNOUNCEMENT_CHANNELS = ['1550814384844968037', '1550814390117335070'];
+
 // ==========================================
 // 1. BLOXLINK VERIFICATION SYSTEM
 // ==========================================
@@ -180,7 +183,7 @@ const commands = [
         .addChannelOption(option =>
             option.setName('channel')
                 .setDescription('The channel to send the announcement in')
-                .addChannelTypes(ChannelType.GuildText)
+                .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
                 .setRequired(true))
         .addStringOption(option =>
             option.setName('title')
@@ -195,6 +198,7 @@ const commands = [
                 .setDescription('Optional ping for the announcement')
                 .setRequired(false)
                 .addChoices(
+                    { name: '@announcements ping', value: 'announcements_ping' },
                     { name: '@everyone', value: 'everyone' },
                     { name: '@here', value: 'here' },
                     { name: 'None', value: 'none' }
@@ -409,12 +413,28 @@ client.on('interactionCreate', async (interaction) => {
             let pingText = '';
             if (pingOption === 'everyone') pingText = '@everyone';
             if (pingOption === 'here') pingText = '@here';
+            if (pingOption === 'announcements_ping') {
+                const announceRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'announcements ping' || r.name.toLowerCase() === 'announcements');
+                pingText = announceRole ? `<@&${announceRole.id}>` : '@announcements ping';
+            }
 
             try {
+                if (pingOption === 'everyone' || pingOption === 'here') {
+                    await targetChannel.permissionOverwrites.edit(interaction.guild.id, {
+                        MentionEveryone: true
+                    }).catch(() => {});
+                }
+
                 await targetChannel.send({
                     content: pingText || undefined,
                     embeds: [announceEmbed]
                 });
+
+                if (pingOption === 'everyone' || pingOption === 'here') {
+                    await targetChannel.permissionOverwrites.edit(interaction.guild.id, {
+                        MentionEveryone: null
+                    }).catch(() => {});
+                }
 
                 return interaction.editReply(`✅ Announcement successfully posted in <#${targetChannel.id}>!`);
             } catch (err) {
